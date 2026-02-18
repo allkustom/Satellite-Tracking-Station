@@ -1,5 +1,10 @@
+// For gear box testing
+
+
+// ---------------------------------------------------------------
+// ---------------------------------------------------------------
+// ---------------------------------------------------------------
 #include <AccelStepper.h>
-#include <math.h>
 
 const int stepperCount = 2;
 const int dirPin[stepperCount] = {2,4};
@@ -16,33 +21,22 @@ const int fullStepRev = 200;
 // Halfstep -> 2
 // ...
 // 1/16 step -> 16
-const int microStepping = 16;
-const int stepsPerRevolution = fullStepRev * microStepping;
-const float speedAmp = 5.0f;
+int microStepping = 1;
+bool ifMicro = false;
+float teeth = 16.0f;
+int stepsPerRevolution = fullStepRev * microStepping;
+float speedAmp = 5.0f;
 
 // Higher number = faster
-const int speeds[2] = {100 * microStepping * speedAmp, 200 * microStepping * speedAmp};
+int speeds[2] = {100 * microStepping * speedAmp, 200 * microStepping * speedAmp};
 
 // Acceleration
-const int accelSpeed = 100 * microStepping * speedAmp;
+int accelSpeed = 200 * microStepping * speedAmp;
 
 AccelStepper* st[stepperCount];
 
 String msg;
 bool moving = false;
-
-// Angle calculation with Trig
-bool dir = true;
-const float RAD2DEG = 180.0 / M_PI;
-float angle_1;
-float angle_2;
-float rev_1;
-float rev_2;
-float currentcoordX = 0;
-float currentcoordY = 0;
-float currentcoordZ = 0;
-float currentAngle_1;
-float currentAngle_2;
 
 long revToSteps(float rev){
   return lround(rev * (float)stepsPerRevolution);
@@ -80,7 +74,7 @@ int dirSet(bool dir, bool sep, int index){
 void stepperRot(bool dir, bool sep, float rev_L, float rev_R, int speed){
   long moveSteps_L = labs(revToSteps(rev_L));
   long moveSteps_R = labs(revToSteps(rev_R));
-  if(moveSteps_L < 0 || moveSteps_R < 0) return;
+  if(moveSteps_L <= 0 || moveSteps_R <= 0) return;
 
   // enableMotor(true);
   // setProfileMotor(speed, accelSpeed);
@@ -124,94 +118,45 @@ void stepperRot(bool dir, bool sep, float rev_L, float rev_R, int speed){
     }
   }
   while (anyRunning);
-
-  currentAngle_1 += rev_1;
-  currentAngle_2 += rev_2;
-  Serial.println("Currnet Angle 1: " + (String)currentAngle_1);
-  Serial.println("Currnet Angle 2: " + (String)currentAngle_2);
 }
 
 void actionSeq(int cases){
   switch(cases){
+    // dir / sep / rev_L / rev_R / speed
     case 0:
-      stepperRot(true, false, 0.5f,0.5f, speeds[0]);
+      stepperRot(true, false, teeth,teeth, speeds[0]);
       break;
     case 1:
-      stepperRot(false, false, 0.5f,0.5f, speeds[0]);
+      stepperRot(true, false,teeth*2, teeth*2, speeds[1]);
       break;
     case 2:
-      stepperRot(true, true, 0.25f,0.25f, speeds[0]);
+      stepperRot(false, false, teeth*4,teeth*4, speeds[1]);
       break;
-    case 3:
-      stepperRot(false, true, 0.25f,0.25f, speeds[0]);
+    case 8:
+      microStepping = 1;
+      digitalWrite(stepControlPin, LOW);
+      stepsPerRevolution = fullStepRev * microStepping;
+      speeds[0] = {100 * microStepping * speedAmp};
+      speeds[1] = {200 * microStepping * speedAmp};
+      accelSpeed = 200 * microStepping * speedAmp;
+      Serial.println("Set Mode: Full Step");
       break;
-    case 4:
-      stepperRot(true, false, 0.5f,0.25f, speeds[0]);
-      break;
-    case 5:
-      stepperRot(false, false, 0.5f,0.25f, speeds[0]);
-      break;
-
-    // Coordinate tracking
-    case 6:
-      angleCal(120.0f, 50.0f, 100.0f);
-      updateRev();
-      Serial.println("rev_1 : " + (String)rev_1);
-      Serial.println("rev_2 : " + (String)rev_2);
-      
-      if(rev_1 < rev_2){
-        stepperRot(false,true, rev_1+rev_2, rev_2 - rev_1, speeds[0]);
-      }else{
-        stepperRot(false,false, rev_1+rev_2, rev_1 - rev_2, speeds[0]);
-      }
-      break;
-
-    case 7:
-      updateRev();
-      if(rev_1 < rev_2){
-        stepperRot(true,true, rev_1+rev_2, rev_2 - rev_1, speeds[0]);
-      }else{
-        stepperRot(true,false, rev_1+rev_2, rev_1 - rev_2, speeds[0]);
-      }
-    
-      break;
-      
-
-    // Action Seq
     case 9:
-      stepperRot(true, true, 0.25f, 0.25f, speeds[0]);
-      stepperRot(false, true, 0.5f, 0.5f, speeds[1]);
-      stepperRot(true, true, 0.25f, 0.25f, speeds[1]);
-      stepperRot(true, false, 0.5f, 0.25f, speeds[0]);
-      stepperRot(false, false, 0.5f, 0.25f, speeds[0]);
-      stepperRot(true, false, 0.5f, 0.5f, speeds[0]);
-      stepperRot(false, false, 0.5f, 0.5f, speeds[1]);
+      microStepping = 16;
+      digitalWrite(stepControlPin, HIGH);
+      stepsPerRevolution = fullStepRev * microStepping;
+      speeds[0] = {200 * microStepping * speedAmp};
+      speeds[1] = {400 * microStepping * speedAmp};
+      accelSpeed = 400 * microStepping * speedAmp;
+      Serial.println("Set Mode: 1/16 step");
+
       break;
-  
     default:
       Serial.println("CMD out fo range");
       moving = false;
       break;
 
   }
-}
-
-void angleCal(float coordX, float coordY, float coordZ){
-  float cal_1 = coordY / (sqrt(pow(coordX,2) + pow(coordY, 2)));
-  float cal_2 = coordZ / (sqrt(pow(coordX,2) + pow(coordY,2)+pow(coordZ,2)));
-  angle_1 = acos(cal_1) * RAD2DEG;
-  angle_2 = acos(cal_2) * RAD2DEG;
-  updatecoord(coordX, coordY, coordZ);
-}
-
-void updateRev(){
-  rev_1 = angle_1 / 360;
-  rev_2 = angle_2 / 360;  
-}
-void updatecoord(float coordX, float coordY, float coordZ){
-  currentcoordX = coordX;
-  currentcoordY = coordY;
-  currentcoordZ = coordZ;
 }
 
 
@@ -229,7 +174,9 @@ void setup() {
     }
   }
   pinMode(stepControlPin, OUTPUT);
-  digitalWrite(stepControlPin, HIGH);
+  if(ifMicro){
+    digitalWrite(stepControlPin, HIGH);
+  }
 
   for(int i=0; i<stepperCount; i++){
     st[i] = new AccelStepper(AccelStepper::DRIVER, stepPin[i], dirPin[i]);
@@ -275,7 +222,5 @@ void loop() {
       msg += c;
     }
   }
-
-
 }
 
