@@ -6,4 +6,4 @@ Atending project as a research assistant
 Instructor: [Thiago Hersan](https://thiagohersan.com/)
 
 
-[Click here for the detailed documentation](https://allkustom.net/1%20collections/0%20creativeTech//006%20SatelliteTrackingStation/)
+[Click here for the detailed documentation](https://allkustom.net/1%20collections/0%20creativeTech//100%20SatelliteTrackingStation/)
