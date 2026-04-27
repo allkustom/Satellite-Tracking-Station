@@ -1,23 +1,42 @@
 #include <AccelStepper.h>
 #include <math.h>
 
+// TODO, Apr 9th
+// Match A4988's STEP/DIR according to the setting
+// Add GY-273 at SDA/SCL and D11(DRDY)
+
+const int limitSwitchPin = 12;
+int limitSwitchState;
+int lastLimitSwitchState = LOW;
+
+unsigned long lastDebounceTime = 0;
+unsigned long debounceDelay = 50;
+
+
 const int stepperCount = 2;
-const int dirPin[stepperCount] = {2,4};
-const int stepPin[stepperCount] = {3,5};
+const int dirPin[stepperCount] = {2,3};
+const int stepPin[stepperCount] = {4,5};
 
 // Motor Enable/Disable purpose
 // Can add motor disable mode with this
 const int enPin[stepperCount] = {6,7};
-const int stepControlPin = 8;
+const int stepControlPin[3] = {8,9,10};
+
 
 const int fullStepRev = 200;
+
+// Apply gearbox ratio
+const int gearboxRatio = 1;
+// Apply gearbox rotation shift
+const int motorDirection = 1;
+
 // Microstepping setting
 // Fullstep -> 1
 // Halfstep -> 2
 // ...
 // 1/16 step -> 16
 const int microStepping = 16;
-const int stepsPerRevolution = fullStepRev * microStepping;
+const int stepsPerRevolution = fullStepRev * microStepping * gearboxRatio;
 const float speedAmp = 2.0f;
 
 // Higher number = faster
@@ -42,7 +61,8 @@ struct Coord {
 
 float maxRadius = 100.0f;
 Coord CurrentCoord = {0.0, maxRadius, 0.0 };
-Coord TargetCoord = {0.0, 0.0, 0.0 };
+// Coord CurrentCoord = {maxRadius, 0.0, 0.0 };
+Coord TargetCoord = {0.0, 0.0, 0.0};
 
 //---------------------------------------------------------
 //---------------------------------------------------------
@@ -95,6 +115,9 @@ void stepperRot(float rev_L, float rev_R, int speed){
   int dirL = rev_L < 0 ? -1 : 1;
   int dirR = rev_R < 0 ? -1 : 1;
 
+  dirL = dirL * motorDirection;
+  dirR = dirR * motorDirection;
+
   // Turn into long and apply absolute
   double moveSteps_L = labs(revToSteps(rev_L));
   double moveSteps_R = labs(revToSteps(rev_R));
@@ -144,27 +167,34 @@ void stepperRot(float rev_L, float rev_R, int speed){
   while (anyRunning);
 }
 
-// void actionSeq(int cases){
-//   switch(cases){
-//     // Coordinate tracking
-//     case 6:
-//       angleCal(10.0, 10.0, 10.0);      
-//       break;
-//     case 7:
-//       angleCal(-15.0, -5.0, 5.0);
-//       break;
-//     case 9:
-//       angleCal(0,maxRadius, 0);
-//       break;
-  
-//     default:
-//       Serial.println("CMD out fo range");
-//       moving = false;
-//       break;
-//   }
-// }
+void cmdCoord(String cmdString){
+  cmdString.toLowerCase();
+  if(cmdString.startsWith("z")){
+    float cmdStringCut = cmdString.substring(1).toFloat();
+    stepperRot((1.0f / 360.0f * cmdStringCut), (1.0f / 360.0f * cmdStringCut), speeds[0]);
+    return;
+  }else if (cmdString.startsWith("x")){
+    float cmdStringCut = cmdString.substring(1).toFloat();
+    stepperRot(-(1.0f / 360.0f * cmdStringCut), -(1.0f / 360.0f * cmdStringCut), speeds[0]);
+    return;
+  }
+  else if (cmdString.startsWith("action")){
+    TargetCoord = {45,45,45};
+    angleCal();
+    TargetCoord = {-45,45,10};
+    angleCal();
+    TargetCoord = {20,70,85};
+    angleCal();
+    TargetCoord = {-75,-50,10};
+    angleCal();
+    TargetCoord = {45,-45,85};
+    angleCal();
+    TargetCoord = {0,0,0};
+    angleCal();
+    return;
+  }
 
-void cmdCoord(int cmd){
+  int cmd = cmdString.toInt();
   if(cmd == 9999 ){
     cmdMsgCount = 0;
     Serial.println("Reset coord cmd");
@@ -205,11 +235,11 @@ void cmdCoord(int cmd){
 void angleCal(){
   // TargetCoord = {coordX,coordY,coordZ};
 
-  float azim_t = atan2(TargetCoord.y, TargetCoord.x) * RAD2DEG;
+  float azim_t = atan2(TargetCoord.x, TargetCoord.y) * RAD2DEG;
   float hori_t = hypot(TargetCoord.x, TargetCoord.y);
   float elev_t = atan2(TargetCoord.z, hori_t) * RAD2DEG;
 
-  float azim_c = atan2(CurrentCoord.y, CurrentCoord.x) * RAD2DEG;
+  float azim_c = atan2(CurrentCoord.x, CurrentCoord.y) * RAD2DEG;
   float hori_c = hypot(CurrentCoord.x, CurrentCoord.y);
   float elev_c = atan2(CurrentCoord.z, hori_c) * RAD2DEG;
 
@@ -228,6 +258,11 @@ void angleCal(){
   angle_2 = fabsf(angle_2);
   float rev_1 = angle_1 / 360;
   float rev_2 = angle_2 / 360;
+
+  Serial.print("Target Azim: "); Serial.println(azim_t);
+  Serial.print("Current Azim: "); Serial.println(azim_c);
+  Serial.print("Delta Angle_1: "); Serial.println(angle_1);
+
 
   rotToTarget(dir_azim, rev_1, dir_elev, rev_2);
   updateCurrentCoord(TargetCoord);
@@ -266,11 +301,63 @@ void updateCurrentCoord(Coord v){
   CurrentCoord.y = v.y;
   CurrentCoord.z = v.z;
 }
+
+bool limitCalib(){
+  
+  int reading = digitalRead(limitSwitchPin);
+  // Serial.println(reading);
+  if(reading != lastLimitSwitchState){
+    lastDebounceTime = millis();
+  }
+
+  if((millis() - lastDebounceTime) > debounceDelay){
+    if(reading != limitSwitchState){
+      limitSwitchState = reading;
+      if(limitSwitchState == LOW){
+        Serial.println("Hit Switch");
+        return true;
+      }
+    }
+  }
+  lastLimitSwitchState = reading;
+  return false;
+}
+
+void calibSeq(){
+  stepperRot(-0.20f, 0.20f, speeds[0]);
+  bool onCalib = true;
+  while (onCalib){
+    stepperRot(-0.005f,0.005f, speeds[0]);
+    delay(25);
+    if(limitCalib()){
+      onCalib = false;
+      Serial.println("Top(90 degree) Hit");
+    }
+  }
+  onCalib = true;
+  stepperRot(0.35f, -0.35f, speeds[0]);
+  while (onCalib){
+    stepperRot(0.005f,-0.005f, speeds[0]);
+    delay(25);
+    if(limitCalib()){
+      onCalib = false;
+      Serial.println("Bot(-45 degree) Hit");
+    }
+  }
+  stepperRot(-0.125f, 0.125f, speeds[0]);
+  Serial.println("Angle Calibration Done");
+
+
+  
+}
+
 //---------------------------------------------------------
 //---------------------------------------------------------
 
 void setup() {
   Serial.begin(9600);
+  pinMode(limitSwitchPin, INPUT_PULLUP);
+  Serial.println("Limit Switch Ready");
 
   for(int i=0; i<stepperCount; i++){
     pinMode(dirPin[i], OUTPUT);
@@ -281,8 +368,10 @@ void setup() {
     }
   }
   
-  pinMode(stepControlPin, OUTPUT);
-  digitalWrite(stepControlPin, HIGH);
+  for(int i =0; i < 4; i ++){
+    pinMode(stepControlPin[i], OUTPUT);
+    digitalWrite(stepControlPin[i], HIGH);
+  }
 
   for(int i=0; i<stepperCount; i++){
     st[i] = new AccelStepper(AccelStepper::DRIVER, stepPin[i], dirPin[i]);
@@ -293,11 +382,15 @@ void setup() {
   }  
 
   delay(1000);
+  Serial.println("Angle Calibration Start");
+  calibSeq();
+
+  delay(1000);
   Serial.println("CMD Ready");
 
-
-
 }
+
+
 
 void loop() {
 
@@ -306,10 +399,12 @@ void loop() {
 
     if (c == '\n' || c == '\r') {
       if (msg.length() > 0) {
-        int cmd = msg.toInt();
-        msg = "";
 
-        cmdCoord(cmd);
+        // int cmd = msg.toInt();
+        // cmdCoord(cmd);
+
+        cmdCoord(msg);
+        msg = "";
         // Serial.print("CMD = ");
         // Serial.println(cmd);
 
@@ -323,6 +418,19 @@ void loop() {
     }
   }
 
+    TargetCoord = {45,45,45};
+    angleCal();
+    TargetCoord = {-45,45,10};
+    angleCal();
+    TargetCoord = {20,70,85};
+    angleCal();
+    TargetCoord = {-75,-50,10};
+    angleCal();
+    TargetCoord = {45,-45,85};
+    angleCal();
+    TargetCoord = {0,0,0};
+    angleCal();
+  
 
 }
 
