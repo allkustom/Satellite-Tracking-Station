@@ -23,10 +23,10 @@ const int enPin[stepperCount] = {6,7};
 const int stepControlPin[3] = {8,9,10};
 
 
-const int fullStepRev = 200;
+const long fullStepRev = 200;
 
 // Apply gearbox ratio
-const int gearboxRatio = 1;
+const long gearboxRatio = 1;
 // Apply gearbox rotation shift
 const int motorDirection = 1;
 
@@ -35,15 +35,16 @@ const int motorDirection = 1;
 // Halfstep -> 2
 // ...
 // 1/16 step -> 16
-const int microStepping = 16;
-const int stepsPerRevolution = fullStepRev * microStepping * gearboxRatio;
+const long microStepSetting = 16;
+const long microStepping = microStepSetting * gearboxRatio;
+const long stepsPerRevolution = fullStepRev * microStepping;
 const float speedAmp = 2.0f;
 
 // Higher number = faster
-const int speeds[2] = {100 * microStepping * speedAmp, 200 * microStepping * speedAmp};
+const float speeds[2] = {100.0f * microStepping * speedAmp, 200.0f * microStepping * speedAmp};
 
 // Acceleration
-const int accelSpeed = 100 * microStepping * speedAmp;
+const float accelSpeed = 200 * microStepping * speedAmp;
 
 AccelStepper* st[stepperCount];
 
@@ -64,6 +65,7 @@ Coord CurrentCoord = {0.0, maxRadius, 0.0 };
 // Coord CurrentCoord = {maxRadius, 0.0, 0.0 };
 Coord TargetCoord = {0.0, 0.0, 0.0};
 
+
 //---------------------------------------------------------
 //---------------------------------------------------------
 // Utilites
@@ -71,9 +73,14 @@ long revToSteps(float rev){
   return lround(rev * (float)stepsPerRevolution);
 }
 
-float wrapDeg(float a){
+float clampAzim(float a){
   while(a > 180.0f) a -= 360.0f;
   while(a <= -180.0f) a += 360.0f;
+  return a;
+}
+float clampElev(float a){
+  if(a > 90.0f) a = 90.0f;
+  else if(a < -45.0f) a= -45.0f;
   return a;
 }
 
@@ -108,7 +115,7 @@ void setProfileMotorSep(int index, float maxSpeed, float accelSpeeds){
 //---------------------------------------------------------
 
 // Controling both motor individually
-void stepperRot(float rev_L, float rev_R, int speed){
+void stepperRot(float rev_L, float rev_R, float speed){
   // Set direction of rotation
   // [true] => clockwise
   // [false] =? counter-clockwise
@@ -141,6 +148,7 @@ void stepperRot(float rev_L, float rev_R, int speed){
   }else{
     setProfileMotor(speed, accelSpeed);
   }
+    // setProfileMotor(speed, accelSpeed);
 
   // Set target and direction
   long target;
@@ -169,16 +177,25 @@ void stepperRot(float rev_L, float rev_R, int speed){
 
 void cmdCoord(String cmdString){
   cmdString.toLowerCase();
-  if(cmdString.startsWith("z")){
+  if(cmdString.startsWith("a")){
     float cmdStringCut = cmdString.substring(1).toFloat();
     stepperRot((1.0f / 360.0f * cmdStringCut), (1.0f / 360.0f * cmdStringCut), speeds[0]);
     return;
-  }else if (cmdString.startsWith("x")){
+  }else if (cmdString.startsWith("d")){
     float cmdStringCut = cmdString.substring(1).toFloat();
     stepperRot(-(1.0f / 360.0f * cmdStringCut), -(1.0f / 360.0f * cmdStringCut), speeds[0]);
     return;
+  }else if (cmdString.startsWith("w")){
+    float cmdStringCut = cmdString.substring(1).toFloat();
+    stepperRot(-(1.0f / 360.0f * cmdStringCut), (1.0f / 360.0f * cmdStringCut), speeds[0]);
+    return;
+  }else if (cmdString.startsWith("s")){
+    float cmdStringCut = cmdString.substring(1).toFloat();
+    stepperRot((1.0f / 360.0f * cmdStringCut), -(1.0f / 360.0f * cmdStringCut), speeds[0]);
+    return;
   }
-  else if (cmdString.startsWith("action")){
+  
+  if (cmdString.startsWith("action")){
     TargetCoord = {45,45,45};
     angleCal();
     TargetCoord = {-45,45,10};
@@ -193,6 +210,14 @@ void cmdCoord(String cmdString){
     angleCal();
     return;
   }
+
+  if(cmdString == "calib"){
+    TargetCoord = {0,0,0};
+    angleCal();
+    calibSeq();
+    return;
+  }
+
 
   int cmd = cmdString.toInt();
   if(cmd == 9999 ){
@@ -233,18 +258,40 @@ void cmdCoord(String cmdString){
 
 
 void angleCal(){
-  // TargetCoord = {coordX,coordY,coordZ};
-
   float azim_t = atan2(TargetCoord.x, TargetCoord.y) * RAD2DEG;
-  float hori_t = hypot(TargetCoord.x, TargetCoord.y);
+  // *** Arduino Uno Q not support 'hypot'
+  // *** Manually calculate with basic features
+  // float hori_t = hypot(TargetCoord.x, TargetCoord.y);
+  float hori_t = sqrt(pow(TargetCoord.x,2) + pow(TargetCoord.y,2));
   float elev_t = atan2(TargetCoord.z, hori_t) * RAD2DEG;
+  // Serial.print("Elev_t is ");
+  // Serial.println(elev_t);
+  if(elev_t < -45.0f){
+    TargetCoord.z = -hori_t;
+  }else if (elev_t > 90.0f){
+    TargetCoord.z = hori_t;
+  }
+  elev_t = clampElev(elev_t);
+  // Serial.print("Revised Elev_t is ");
+  // Serial.println(elev_t);
+  // Serial.println("New Target Cooord Z is " + (String)TargetCoord.z);
 
   float azim_c = atan2(CurrentCoord.x, CurrentCoord.y) * RAD2DEG;
-  float hori_c = hypot(CurrentCoord.x, CurrentCoord.y);
+  // float hori_c = hypot(CurrentCoord.x, CurrentCoord.y);
+  float hori_c = sqrt(pow(CurrentCoord.x,2) + pow(CurrentCoord.y,2));
   float elev_c = atan2(CurrentCoord.z, hori_c) * RAD2DEG;
 
-  float angle_1 = wrapDeg(azim_t - azim_c);
+  float angle_1 = clampAzim(azim_t - azim_c);
+
+  // float angle_2 = clampElev(elev_t - elev_c);
+  // if((elev_t - elev_c) < -45.0f){
+  //   TargetCoord.z = -fabsf(TargetCoord.y);
+  // }
+  // elev_t = clampElev(elev_t);
+  // elev_c = clampElev(elev_c);
+
   float angle_2 = elev_t - elev_c;
+
 
 
   // Use result as a direction
@@ -256,12 +303,12 @@ void angleCal(){
 
   angle_1 = fabsf(angle_1);
   angle_2 = fabsf(angle_2);
-  float rev_1 = angle_1 / 360;
-  float rev_2 = angle_2 / 360;
+  float rev_1 = angle_1 / 360.0f;
+  float rev_2 = angle_2 / 360.0f;
 
-  Serial.print("Target Azim: "); Serial.println(azim_t);
-  Serial.print("Current Azim: "); Serial.println(azim_c);
-  Serial.print("Delta Angle_1: "); Serial.println(angle_1);
+  // Serial.print("Target Azim: "); Serial.println(azim_t);
+  // Serial.print("Current Azim: "); Serial.println(azim_c);
+  // Serial.print("Delta Angle_1: "); Serial.println(angle_1);
 
 
   rotToTarget(dir_azim, rev_1, dir_elev, rev_2);
@@ -324,10 +371,9 @@ bool limitCalib(){
 }
 
 void calibSeq(){
-  stepperRot(-0.20f, 0.20f, speeds[0]);
   bool onCalib = true;
   while (onCalib){
-    stepperRot(-0.005f,0.005f, speeds[0]);
+    stepperRot(-0.01f,0.01f, speeds[0]);
     delay(25);
     if(limitCalib()){
       onCalib = false;
@@ -335,9 +381,9 @@ void calibSeq(){
     }
   }
   onCalib = true;
-  stepperRot(0.35f, -0.35f, speeds[0]);
+  stepperRot(0.3f, -0.3f, speeds[0]);
   while (onCalib){
-    stepperRot(0.005f,-0.005f, speeds[0]);
+    stepperRot(0.01f,-0.01f, speeds[0]);
     delay(25);
     if(limitCalib()){
       onCalib = false;
@@ -368,7 +414,7 @@ void setup() {
     }
   }
   
-  for(int i =0; i < 4; i ++){
+  for(int i =0; i < 3; i ++){
     pinMode(stepControlPin[i], OUTPUT);
     digitalWrite(stepControlPin[i], HIGH);
   }
@@ -383,9 +429,17 @@ void setup() {
 
   delay(1000);
   Serial.println("Angle Calibration Start");
+  stepperRot(-0.20f, 0.20f, speeds[0]);
   calibSeq();
 
   delay(1000);
+  pinMode(LED_BUILTIN,OUTPUT);
+  for(int i = 0; i < 10; i++){
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(100);
+    digitalWrite(LED_BUILTIN, LOW);
+    delay(100);
+  }
   Serial.println("CMD Ready");
 
 }
@@ -420,16 +474,22 @@ void loop() {
 
     TargetCoord = {45,45,45};
     angleCal();
+    delay(500);
     TargetCoord = {-45,45,10};
     angleCal();
-    TargetCoord = {20,70,85};
+    delay(500);
+    TargetCoord = {20,70,-85};
     angleCal();
+    delay(500);
     TargetCoord = {-75,-50,10};
     angleCal();
+    delay(500);
     TargetCoord = {45,-45,85};
     angleCal();
+    delay(500);
     TargetCoord = {0,0,0};
     angleCal();
+    delay(500);
   
 
 }
