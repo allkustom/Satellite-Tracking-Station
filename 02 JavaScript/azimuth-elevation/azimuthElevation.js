@@ -183,3 +183,5 @@ function satelliteAzimuthElevation(localDate, localTime, location, tle) {
     elevation: rad2deg(lookAngles.elevation),
   };
 }
+
+export { solarAzimuthElevation, lunarAzimuthElevation, satelliteAzimuthElevation };
