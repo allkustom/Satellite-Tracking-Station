@@ -3,9 +3,6 @@ import * as satellite from "https://cdn.jsdelivr.net/npm/satellite.js@6.0.2/dist
 const deg2rad = (d) => d * Math.PI / 180.0;
 const rad2deg = (r) => r * 180.0 / Math.PI;
 
-const sinDeg = (d) => Math.sin(deg2rad(d));
-const cosDeg = (d) => Math.cos(deg2rad(d));
-
 // ----------------------------
 // Solar azimuth/elevation (NOAA-style)
 // Returns azimuth_deg (0=N,90=E,180=S,270=W) and elevation_deg
