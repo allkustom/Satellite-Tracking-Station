@@ -7,6 +7,8 @@
 #include <SolarPosition.h>
 #include <SGP4.h>
 
+#include "LunarPosition.h"
+
 using json = nlohmann::json;
 
 constexpr double PI = 3.14159265358979323846;
@@ -79,7 +81,18 @@ AzEl solarAzimuthElevation(const DateTime& localDateTime, const Location& locati
 }
 
 AzEl lunarAzimuthElevation(const DateTime& localDateTime, const Location& location) {
-  return AzEl{0, 0};
+  libsgp4::Observer obs(location.lat, location.lon, 0);
+
+  libsgp4::LunarPosition moon = libsgp4::LunarPosition();
+
+  libsgp4::DateTime dt = libsgp4::DateTime(
+    localDateTime.year, localDateTime.month, localDateTime.day,
+    localDateTime.hour, localDateTime.minute, localDateTime.second).AddHours(-location.tz);
+
+  libsgp4::Eci eci = moon.FindPosition(dt);
+  libsgp4::CoordTopocentric topo = obs.GetLookAngle(eci);
+
+  return AzEl{ .azimuth = toDeg(topo.azimuth), .elevation = toDeg(topo.elevation) };
 }
 
 AzEl satelliteAzimuthElevation(const DateTime& localDateTime, const Location& location, json& tle) {
