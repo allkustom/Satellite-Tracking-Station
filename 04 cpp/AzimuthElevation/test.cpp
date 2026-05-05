@@ -1,10 +1,8 @@
 #include <iostream>
 #include <vector>
 
-#include "json.hpp"
+#include "ArduinoJson.h"
 #include "AzimuthElevation.h"
-
-using json = nlohmann::json;
 
 std::vector<DateTime> TESTS {
   DateTime{ .year = 1972, .month = 3,  .day = 31, .hour = 22, .minute = 22, .second = 22 },
@@ -18,11 +16,13 @@ std::vector<DateTime> TESTS {
 Location NYC { .lat = 40.731266, .lon = -73.997060, .tz = -4 };
 Location FOR { .lat = -3.731862, .lon = -38.526669, .tz = -3 };
 
+std::vector<std::string> SATS { "gps", "glonass", "sci", "goes" };
+
 int main() {
-  json allTles, gps0tle;
-  read_tle_file(std::string{"./all.json"}, allTles);
-  gps0tle = allTles.at("gps").at(0);
-  std::cout << gps0tle.dump(2) << "\n";
+  JsonDocument allTles;
+  JsonObject gps0tle;
+  read_tle_file(std::string{"./all.json"}, SATS, allTles);
+  gps0tle = allTles["gps"][0].as<JsonObject>();
 
   std::cout << "\nSUN\n";
   for (int idx = 0; idx < TESTS.size(); idx++) {

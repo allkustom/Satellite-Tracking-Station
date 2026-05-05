@@ -9,7 +9,7 @@ __pycache__
 *.pyc.*
 
 *cpp/AzimuthElevation/all.json
-*cpp/AzimuthElevation/json.hpp
+*cpp/AzimuthElevation/ArduinoJson.h
 *cpp/AzimuthElevation/sgp4
 *cpp/AzimuthElevation/*.bin
 *cpp/AzimuthElevation/*.out
