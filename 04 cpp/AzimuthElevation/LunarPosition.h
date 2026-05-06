@@ -37,14 +37,18 @@ Eci LunarPosition::FindPosition(const DateTime& dt)
                     6.289 * sin(M_prime) +
                     1.274 * sin(2 * D - M_prime) +
                     0.658 * sin(2 * D) +
-                    0.214 * sin(2 * M_prime) -
-                    0.186 * sin(M);
+                    0.214 * sin(2 * M_prime) +
+                    0.110 * sin(D);
 
     // 3. Ecliptic Latitude (beta)
     double beta = 5.128 * sin(F) +
                   0.280 * sin(M_prime + F) +
-                  0.278 * sin(M_prime - F) +
-                  0.212 * sin(2 * D - F);
+                  0.277 * sin(M_prime - F) +
+                  0.173 * sin(2 * D - F) +
+                  0.055 * sin(2 * D + F - M_prime) +
+                  0.046 * sin(2 * D - F - M_prime) +
+                  0.033 * sin(2 * D + F) +
+                  0.017 * sin(2 * M_prime + F);
 
     // 4. Distance in Earth Radii (r) - Simplified
     double r = 385000.0 - 20905.0 * cos(M_prime) - 3699.0 * cos(2 * D - M_prime) - 2956.0 * cos(2 * D);
