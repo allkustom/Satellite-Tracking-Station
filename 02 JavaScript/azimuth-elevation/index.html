@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <script src="./tle.js"></script>
+
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+      }
+
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+
+  <script type="module">
+    import { solarAzimuthElevation } from "./azimuthElevation.js";
+    import { lunarAzimuthElevation } from "./azimuthElevation.js";
+    import { satelliteAzimuthElevation } from "./azimuthElevation.js";
+
+    const NYC = {
+      lat: 40.731266,
+      lon: -73.997060,
+      tz: -4,
+    };
+
+    const FOR = {
+      lat: -3.731862,
+      lon: -38.526669,
+      tz: -3,
+    };
+
+    const TESTS = [
+      { date: { year: 1972, month: 3, day: 31 }, time: { hour: 22, minute: 22, second: 22} },
+      { date: { year: 1981, month: 10, day: 10 }, time: { hour: 10, minute: 10, second: 10 } },
+      { date: { year: 2000, month: 10, day: 10 }, time: { hour: 0, minute: 30, second: 0 } },
+      { date: { year: 2010, month: 1, day: 2 }, time: { hour: 3, minute: 4, second: 55 } },
+      { date: { year: 2020, month: 8, day: 17 }, time: { hour: 9, minute: 3, second: 5} },
+      { date: { year: 2026, month: 10, day: 10 }, time: { hour: 21, minute: 11, second: 44} },
+    ];
+
+    const GPS_TLES = [];
+
+    window.addEventListener("load", async () => {
+      const allTles = await fetchTles("https://astrolabe-www.github.io/artificial-calendar/");
+      Object.assign(GPS_TLES, allTles["gps"]);
+
+      for (let idx = 0; idx < TESTS.length; idx++) {
+        const sunAzEl = solarAzimuthElevation(TESTS[idx].date, TESTS[idx].time, NYC);
+        const moonAzEl = lunarAzimuthElevation(TESTS[idx].date, TESTS[idx].time, NYC);
+        const satAzEl = satelliteAzimuthElevation(TESTS[idx].date, TESTS[idx].time, NYC, GPS_TLES[0].tle);
+
+        console.log(
+          idx,
+          Object.values(sunAzEl),
+          Object.values(moonAzEl),
+          Object.values(satAzEl),
+        );
+      }
+    });
+  </script>
+
+  <body>
+    <main></main>
+  </body>
+</html>

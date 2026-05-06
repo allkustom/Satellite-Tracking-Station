@@ -1,3 +1,7 @@
 .DS_Store
 TD_coord.*.toe
 !TD_coord.toe
+.vscode
+*.pyc
+*.pyc.*
+__pycache__
