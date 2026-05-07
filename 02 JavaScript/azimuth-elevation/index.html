@@ -2,7 +2,6 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <script src="./tle.js"></script>
 
     <style>
       html,
@@ -19,6 +18,7 @@
   </head>
 
   <script type="module">
+    import { fetchTles } from "./tleUtils.js";
     import { solarAzimuthElevation } from "./azimuthElevation.js";
     import { lunarAzimuthElevation } from "./azimuthElevation.js";
     import { satelliteAzimuthElevation } from "./azimuthElevation.js";

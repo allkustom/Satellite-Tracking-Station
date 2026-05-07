@@ -3,6 +3,7 @@
 
 #include "ArduinoJson.h"
 #include "AzimuthElevation.h"
+#include "TleUtils.h"
 
 std::vector<DateTime> TESTS {
   DateTime{ .year = 1972, .month = 3,  .day = 31, .hour = 22, .minute = 22, .second = 22 },
