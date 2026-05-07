@@ -31,7 +31,9 @@ void setup() {
   deserializeJson(allTles, gps0string);
   gps0tle = allTles["gps"][0].as<JsonObject>();
 
-  delay(2000);
+  while (!Serial && millis() < 5000) {
+    delay(100);
+  }
 
   Serial.print("\nSUN\n");
   for (int idx = 0; idx < TESTS.size(); idx++) {
