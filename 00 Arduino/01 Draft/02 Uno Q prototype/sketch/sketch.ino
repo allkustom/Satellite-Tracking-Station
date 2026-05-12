@@ -1,9 +1,13 @@
+// Active the below line in Uno Q env
+#include <Arduino_RouterBridge.h>
+
+bool executed = false;
+
 #include <AccelStepper.h>
 #include <math.h>
+#include "manager.h"
 
-// TODO, Apr 9th
-// Match A4988's STEP/DIR according to the setting
-// Add GY-273 at SDA/SCL and D11(DRDY)
+int assignedStationID;
 
 const int limitSwitchPin = 12;
 int limitSwitchState;
@@ -25,20 +29,18 @@ const int stepControlPin[3] = {8,9,10};
 
 const long fullStepRev = 200;
 
-// Apply gearbox ratio
-const long gearboxRatio = 1;
-// Apply gearbox rotation shift
-const int motorDirection = 1;
+// const long gearboxRatio = 20;
+// const int motorDirection = -1;
+// const long microStepSetting = 4;
+// const float speedAmp = 0.25f;
 
-// Microstepping setting
-// Fullstep -> 1
-// Halfstep -> 2
-// ...
-// 1/16 step -> 16
-const long microStepSetting = 16;
+long gearboxRatio = 1;
+int motorDirection = 1;
+long microStepSetting = 16;
+float speedAmp = 2.0f;
+
 const long microStepping = microStepSetting * gearboxRatio;
 const long stepsPerRevolution = fullStepRev * microStepping;
-const float speedAmp = 2.0f;
 
 // Higher number = faster
 const float speeds[2] = {100.0f * microStepping * speedAmp, 200.0f * microStepping * speedAmp};
@@ -70,7 +72,13 @@ Coord TargetCoord = {0.0, 0.0, 0.0};
 //---------------------------------------------------------
 // Utilites
 long revToSteps(float rev){
-  return lround(rev * (float)stepsPerRevolution);
+  // Monitor.println((long)round(rev * (float)stepsPerRevolution));
+  return (long)round(rev * (float)stepsPerRevolution);
+  
+
+  //// [!] Arduino Uno Q doesn't support lround????????????
+  //// lround() blocks the 'Bridge.provide' method.
+  // return lround(rev * (float)stepsPerRevolution);
 }
 
 float clampAzim(float a){
@@ -125,65 +133,58 @@ void stepperRot(float rev_L, float rev_R, float speed){
   dirL = dirL * motorDirection;
   dirR = dirR * motorDirection;
 
-  // Turn into long and apply absolute
-  double moveSteps_L = labs(revToSteps(rev_L));
-  double moveSteps_R = labs(revToSteps(rev_R));
 
 
-  // Map speed, accel
-  // When the goal revolution is different,
-  // slower the less revoluting moter
-  float adjustSpeed;
-  float adjustAccel;
-  if(moveSteps_L > moveSteps_R){
-    adjustSpeed = moveSteps_R/moveSteps_L * speed ;
-    adjustAccel = moveSteps_R/moveSteps_L * accelSpeed ;
-    setProfileMotorSep(0,speed, accelSpeed);
-    setProfileMotorSep(1,adjustSpeed, adjustAccel);
-  }else if(moveSteps_L < moveSteps_R){
-    adjustSpeed = moveSteps_L/moveSteps_R * speed ;
-    adjustAccel = moveSteps_L/moveSteps_R * accelSpeed ;
-    setProfileMotorSep(0, adjustSpeed, adjustAccel);
-    setProfileMotorSep(1,speed, accelSpeed);
-  }else{
-    setProfileMotor(speed, accelSpeed);
-  }
-    // setProfileMotor(speed, accelSpeed);
+  // // Turn into long and apply absolute
+  long moveSteps_L = labs(revToSteps(rev_L));
+  long moveSteps_R = labs(revToSteps(rev_R));
 
-  // Set target and direction
-  long target;
-  // target = st[0]->currentPosition() + moveSteps_L;
-  // st[0]->moveTo(target);
-  // target = st[1]->currentPosition() + moveSteps_R;
-  // st[1]->moveTo(target);
-  target = st[0]->currentPosition() + (long)dirL * moveSteps_L;
-  st[0]->moveTo(target);
-  target = st[1]->currentPosition() + (long)dirR * moveSteps_R;
-  st[1]->moveTo(target);
+  long maxSteps = max(moveSteps_L, moveSteps_R);
+  Monitor.println(maxSteps);
+  if(maxSteps == 0) return;
+
+  float ratioL = (float)moveSteps_L / (float)maxSteps;
+  float ratioR = (float)moveSteps_R / (float)maxSteps;
+
+  float speedL = speed * ratioL;
+  float speedR = speed * ratioR;
+  float accelL = accelSpeed * ratioL;
+  float accelR = accelSpeed * ratioR;
+  setProfileMotorSep(0, speedL, accelL);
+  setProfileMotorSep(1, speedR, accelR);
 
 
+
+
+  long targetL = st[0] -> currentPosition() + dirL * moveSteps_L;
+  long targetR = st[1] -> currentPosition() + dirR * moveSteps_R;
+  
+  st[0]->moveTo(targetL);
+  st[1]->moveTo(targetR);
+
+  
   bool anyRunning;
+
   do{
     anyRunning = false;
-    for(int i =0; i< stepperCount; i++){
+    for(int i = 0; i < stepperCount; i++){
+      st[i]->run();
       if(st[i]->distanceToGo() != 0){
-        st[i]->run();
         anyRunning = true;
       }
     }
-  }
-  while (anyRunning);
+  } while(anyRunning);
 }
 
 void cmdCoord(String cmdString){
   cmdString.toLowerCase();
   if(cmdString.startsWith("a")){
     float cmdStringCut = cmdString.substring(1).toFloat();
-    stepperRot((1.0f / 360.0f * cmdStringCut), (1.0f / 360.0f * cmdStringCut), speeds[0]);
+    stepperRot(-(1.0f / 360.0f * cmdStringCut), -(1.0f / 360.0f * cmdStringCut), speeds[0]);
     return;
   }else if (cmdString.startsWith("d")){
     float cmdStringCut = cmdString.substring(1).toFloat();
-    stepperRot(-(1.0f / 360.0f * cmdStringCut), -(1.0f / 360.0f * cmdStringCut), speeds[0]);
+    stepperRot((1.0f / 360.0f * cmdStringCut), (1.0f / 360.0f * cmdStringCut), speeds[0]);
     return;
   }else if (cmdString.startsWith("w")){
     float cmdStringCut = cmdString.substring(1).toFloat();
@@ -211,7 +212,12 @@ void cmdCoord(String cmdString){
     return;
   }
 
-  if(cmdString == "calib"){
+  if(cmdString == "calib0"){
+    calibSeq();
+    return;
+  }
+
+  if(cmdString == "calib1"){
     TargetCoord = {0,0,0};
     angleCal();
     calibSeq();
@@ -393,17 +399,39 @@ void calibSeq(){
   stepperRot(-0.125f, 0.125f, speeds[0]);
   Serial.println("Angle Calibration Done");
 
+  Bridge.call("callReady", true);
+}
 
-  
+void pythonCoord(float x, float y, float z){
+  Monitor.println("Requested Coord is : " + (String)x + " / " + (String)y + " / " + (String)z);
+  TargetCoord.x = x;
+  TargetCoord.y = y;
+  TargetCoord.z = z;
+  // executeAngleCal = activate;
+
+  angleCal();
 }
 
 //---------------------------------------------------------
 //---------------------------------------------------------
 
 void setup() {
-  Serial.begin(9600);
+  Bridge.begin();
+
+  Monitor.begin();
+  Serial.begin(115200);
+  delay(500);
+
+  // [!] Provide functions to Python, under Uno Q env
+  Bridge.provide_safe("pythonInput", pythonCoord);
+
+  
+  assignedStationID = int(stationID);
+  Monitor.println("Station ID is " + (String)assignedStationID);
+  // Serial.println("Station ID is " + (String)assignedStationID);
   pinMode(limitSwitchPin, INPUT_PULLUP);
-  Serial.println("Limit Switch Ready");
+  Monitor.println("Limit Switch Ready");
+  // Serial.println("Limit Switch Ready");
 
   for(int i=0; i<stepperCount; i++){
     pinMode(dirPin[i], OUTPUT);
@@ -414,9 +442,17 @@ void setup() {
     }
   }
   
+
   for(int i =0; i < 3; i ++){
     pinMode(stepControlPin[i], OUTPUT);
     digitalWrite(stepControlPin[i], HIGH);
+    // digitalWrite(stepControlPin[i], LOW);
+  }
+
+
+
+  if(microStepSetting == 4){
+    digitalWrite(stepControlPin[2], LOW);    
   }
 
   for(int i=0; i<stepperCount; i++){
@@ -428,49 +464,53 @@ void setup() {
   }  
 
   delay(1000);
-  Serial.println("Angle Calibration Start");
-  stepperRot(-0.20f, 0.20f, speeds[0]);
+  Monitor.println("Angle Calibration Start");
+  // Serial.println("Angle Calibration Start");
+  
+  stepperRot(-0.15f, 0.15f, speeds[0]);
   calibSeq();
 
-  delay(1000);
-  pinMode(LED_BUILTIN,OUTPUT);
-  for(int i = 0; i < 10; i++){
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(100);
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(100);
-  }
-  Serial.println("CMD Ready");
+  delay(500);
+  Serial.println("READY");
+
+  
+
 
 }
 
 
 
 void loop() {
+  // if(!executed){
+  //   delay(5000);
+  //   Bridge.notify("callReady", true);
+  //   executed = true;
+  // }
+  
 
-  while (Serial.available() > 0) {
-    char c = (char)Serial.read();
+  // while (Serial.available() > 0) {
+  //   char c = (char)Serial.read();
 
-    if (c == '\n' || c == '\r') {
-      if (msg.length() > 0) {
+  //   if (c == '\n' || c == '\r') {
+  //     if (msg.length() > 0) {
 
-        // int cmd = msg.toInt();
-        // cmdCoord(cmd);
+  //       // int cmd = msg.toInt();
+  //       // cmdCoord(cmd);
 
-        cmdCoord(msg);
-        msg = "";
-        // Serial.print("CMD = ");
-        // Serial.println(cmd);
+  //       cmdCoord(msg);
+  //       msg = "";
+  //       // Serial.print("CMD = ");
+  //       // Serial.println(cmd);
 
-        // actionSeq(cmd);
-        // moving = true;
-      }
-    } else {
-      if(!moving){
-        msg += c;
-      }
-    }
-  }
+  //       // actionSeq(cmd);
+  //       // moving = true;
+  //     }
+  //   } else {
+  //     if(!moving){
+  //       msg += c;
+  //     }
+  //   }
+  // }
 
     TargetCoord = {45,45,45};
     angleCal();
@@ -490,6 +530,18 @@ void loop() {
     TargetCoord = {0,0,0};
     angleCal();
     delay(500);
+
+  // Monitor.println("Arduino Working");
+  // Bridge.call("callReady", true);
+  // delay(500);
+  //   TargetCoord = {0,0,0};
+  //   angleCal();
+  //   delay(500);
+  
+
+  // Bridge.call("Call");
+  // Monitor.println("Arduino Working");
+  // delay(500);
   
 
 }
